@@ -7,7 +7,7 @@ GSMs <- (c("GSM5311807", "GSM5311808", "GSM5311809", "GSM5311810", "GSM5311811",
 
 data_paths <- data.frame(barcode = barcode_names, feature = feature, mtx = mtx_names, GSMs = GSMs)
 
-for (i in nrow(data_paths)){
+for (i in 1:nrow(data_paths)){
   
   barcods  <- read.table(data_paths[i,1])
   barcods  <- data.frame(V1 = sub("-1", "", barcods$V1))
@@ -29,11 +29,11 @@ for (i in nrow(data_paths)){
     count[mtx[j,1], mtx[j,2]] = mtx[j,3]
   }
   
-count_file_name <- data_paths[i,4]
-write.table(count, file = paste0(count_file_name, ".csv"), sep = "\t")
+  count_file_name <- data_paths[i,4]
+  print(paste0("====> The file:",count_file_name," Done Processing!"))
+  write.table(count, file = paste0("single_cell_count_mateix_",count_file_name, ".csv"), sep = "\t")
 
 }
 
-nrow(data_paths)
 
 
