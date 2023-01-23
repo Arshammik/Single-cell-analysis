@@ -3,7 +3,7 @@ setwd("~/desktop/Kharazmi")
 barcode_names <- paste0("~/desktop/Kharazmi/GSE174461_RAW/", list.files("~/desktop/Kharazmi/GSE174461_RAW", "_barcodes"))
 feature       <- paste0("~/desktop/Kharazmi/GSE174461_RAW/", list.files("~/desktop/Kharazmi/GSE174461_RAW", "_features"))
 mtx_names     <- paste0("~/desktop/Kharazmi/GSE174461_RAW/", list.files("~/desktop/Kharazmi/GSE174461_RAW", "_matrix.mtx"))
-GSMs          <- sub("(^.*)(GSM\\d*)(.*$)", "\\2", mtx_names)
+GSMs          <- sub("(^.*)(GSM\\d*)(.*$)", "\\2", mtx_names) # constructing three section and choose the second one
 
 data_paths <- data.frame(barcode = barcode_names, feature = feature, mtx = mtx_names, GSMs = GSMs)
 
