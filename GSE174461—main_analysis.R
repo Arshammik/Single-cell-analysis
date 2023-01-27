@@ -74,10 +74,19 @@ pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
 
 JackStrawPlot(pbmc, dims = 1:15)
 
+ElbowPlot(pbmc)
 
+pbmc <- FindNeighbors(pbmc, dims = 1:15)
+pbmc <- FindClusters(pbmc, resolution = 0.2)
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
 
-
-
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages =
+# 'umap-learn')
+pbmc <- RunUMAP(pbmc, dims = 1:15)
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+DimPlot(pbmc, reduction = "umap")
 
 
 
