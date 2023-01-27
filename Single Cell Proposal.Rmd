@@ -1,0 +1,198 @@
+---
+title: "Single Cell Anallysis Handbook"
+output:
+  pdf_document: default
+  html_notebook: default
+editor_options:
+  chunk_output_type: inline
+---
+
+First we have to load the data for GSE174461 which are six count matrix previously constructed from mtx files
+
+```{r}
+GSM5311807 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311807.csv")
+GSM5311808 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311808.csv")
+GSM5311809 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311809.csv")
+GSM5311810 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311810.csv")
+GSM5311811 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311811.csv")
+GSM5311812 <-  read.delim("~/desktop/Kharazmi/GSE174461_Proccesed/single_cell_count_mateix_GSM5311812.csv")
+```
+
+We need to merge all these count matrixes and perform QC and scaling on the whole data
+
+```{r message=FALSE, warning=FALSE}
+# 1. Constructing object
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+pbmc.data <- cbind(GSM5311807,GSM5311808,GSM5311809,GSM5311810,GSM5311811,GSM5311812)
+dim(pbmc.data)
+pbmc <-  CreateSeuratObject(counts =  pbmc.data, project = "Breast Cancer", min.cells = 3, min.features = 200)
+pbmc
+```
+
+then we perform quality control on our data
+
+```{r}
+# 2. QC
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+
+# Visualize QC metrics as a violin plot
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, add.noise = T)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+FeatureScatter(object = pbmc, feature1 = "nFeature_RNA", feature2 = "nCount_RNA") + geom_smooth(method = "lm")
+FeatureScatter(object = pbmc, feature1 = "nFeature_RNA", feature2 = "percent.mt") + geom_smooth(method = "lm")
+```
+
+The `VlnPlot` cannot show the data properly because of size of our dataset, the density plot will be a better choice
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+ggplot(pbmc@meta.data, aes(x = nFeature_RNA)) + geom_density() + geom_vline(xintercept = 3000 , color = 2, linetype = 2)
+ggplot(pbmc@meta.data, aes(x = nCount_RNA))   + geom_density() + geom_vline(xintercept = 12500, color = 2, linetype = 2)
+ggplot(pbmc@meta.data, aes(x = percent.mt))   + geom_density() + geom_vline(xintercept = 6    , color = 2, linetype = 2)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+# Now we can trim out data based on violin plot
+pbmc <-  subset(pbmc, subset =  nFeature_RNA < 3000 & nCount_RNA < 12500 & percent.mt < 6)
+```
+
+After trimming, it is time to normalize our dataset
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc <-  NormalizeData(object = pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc <- FindVariableFeatures(object = pbmc, selection.method = "vst", mean.function = 2000)
+
+top10 <- head(VariableFeatures(pbmc), 10)
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = T, xnudge = 0, ynudge = 0)
+plot1
+plot2
+```
+
+```{r}
+all.genes <-rownames(pbmc)
+pbmc <- ScaleData(object = pbmc, features = all.genes)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc <- RunPCA(object = pbmc, features = VariableFeatures(object = pbmc))
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+DimPlot(pbmc, reduction = "pca")
+DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+```
+
+Determine the 'dimensionality' of the dataset
+
+```{r}
+pbmc <- JackStraw(pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+JackStrawPlot(pbmc, dims = 1:15)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+ElbowPlot(pbmc)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc <- FindNeighbors(pbmc, dims = 1:15)
+pbmc <- FindClusters(pbmc, resolution = 0.1)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+pbmc <- FindClusters(pbmc, resolution = 0.1)
+DimPlot(object = pbmc, reduction = "umap")
+
+```
+
+## Finding differentially expressed features (cluster biomarkers)
+
+The `FindAllMarkers` function
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+# find markers for every cluster compared to all remaining cells, report only the positive
+# ones
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 2, order_by = avg_log2FC)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+VlnPlot(pbmc, features = c("IL7R—ENSG00000168685", "LTB—ENSG00000227507"))
+VlnPlot(pbmc, features = c("PPBP—ENSG00000163736", "NRGN—ENSG00000154146"))
+VlnPlot(pbmc, features = c("GNLY—ENSG00000115523", "NKG7—ENSG00000105374"))
+VlnPlot(pbmc, features = c("LYZ—ENSG00000090382", "S100A8—ENSG00000143546"))
+VlnPlot(pbmc, features = c("IGHM—ENSG00000211899", "IGLC2—ENSG00000211677"))
+VlnPlot(pbmc, features = c("MGP—ENSG00000111341", "KRT19—ENSG00000171345"))
+VlnPlot(pbmc, features = c("CXCL8—ENSG00000169429", "NAMPT—ENSG00000105835"))
+VlnPlot(pbmc, features = c("CXCL3—ENSG00000163734", "HIST1H4H—ENSG00000158406"))
+VlnPlot(pbmc, features = c("ATP10D—ENSG00000145246", "CLC—ENSG00000105205"))
+```
+
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+FeaturePlot(object = pbmc, features = c(
+  "IL7R—ENSG00000168685", "LTB—ENSG00000227507",
+  "PPBP—ENSG00000163736", "NRGN—ENSG00000154146",
+  "GNLY—ENSG00000115523", "NKG7—ENSG00000105374",
+  "LYZ—ENSG00000090382", "S100A8—ENSG00000143546",
+  "IGHM—ENSG00000211899", "IGLC2—ENSG00000211677",
+  "MGP—ENSG00000111341", "KRT19—ENSG00000171345",
+  "CXCL8—ENSG00000169429", "NAMPT—ENSG00000105835",
+  "CXCL3—ENSG00000163734", "HIST1H4H—ENSG00000158406",
+  "ATP10D—ENSG00000145246", "CLC—ENSG00000105205"
+  ))
+
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE}
+pbmc.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(pbmc, features = top10$gene) + NoLegend()
+
+```
+
+```{r,echo=FALSE, message=FALSE, error=FALSE}
+target.genes <- data.frame(gene = sub("—ENS.*$", "", top10$gene), cluster = top10$cluster, logFC = top10$avg_log2FC)
+write.csv(target.genes, "targer_genes_GSE174461.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+sessionInfo()
+```
+
